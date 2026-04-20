@@ -205,3 +205,22 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# FastAPI / local runtime
+.uvicorn/
+*.pid
+
+# Local SQLite database (portfolio/local runtime)
+app.db
+app.db-shm
+app.db-wal
+
+# OS temporary files
+.DS_Store
+Thumbs.db
+
+# project prompt
+project_prompt.txt
+
+# local run command
+local_run_command.txt
