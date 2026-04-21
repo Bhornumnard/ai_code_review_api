@@ -65,6 +65,124 @@ def test_review_rejects_invalid_review_language(client):
     assert response.status_code == 422
 
 
+def test_review_accepts_valid_provider_enum(client, monkeypatch):
+    """Review route should accept provider values from the enum."""
+    monkeypatch.setattr("app.api.routes.review.get_llm_service", lambda settings, provider: DummyReviewService())
+    for provider in ("openai", "claude", "anthropic", "gemini"):
+        response = client.post(
+            "/v1/review",
+            headers={"X-API-Key": "test-client-key"},
+            json={"language": "python", "code": "print('ok')", "provider": provider},
+        )
+        # DummyReviewService is used so the only constraint is the enum validation.
+        assert response.status_code == 200, f"provider={provider} got {response.status_code}"
+
+
+def test_review_rejects_unknown_provider(client):
+    """Unknown provider value must fail Pydantic validation (422)."""
+    response = client.post(
+        "/v1/review",
+        headers={"X-API-Key": "test-client-key"},
+        json={"language": "python", "code": "print('ok')", "provider": "gpt4"},
+    )
+    assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /v1/providers
+# ---------------------------------------------------------------------------
+
+def test_providers_no_auth_required(client):
+    """Providers endpoint must be accessible without any API key."""
+    response = client.get("/v1/providers")
+    assert response.status_code == 200
+
+
+def test_providers_returns_all_canonical_providers(client):
+    """Response must include openai, claude and gemini entries."""
+    response = client.get("/v1/providers")
+    names = {p["name"] for p in response.json()["providers"]}
+    assert {"openai", "claude", "gemini"} == names
+
+
+def test_providers_marks_configured_provider_available(client):
+    """Provider with a key in settings must be marked available=true."""
+    response = client.get("/v1/providers")
+    providers = {p["name"]: p for p in response.json()["providers"]}
+    # test_settings only configures openai
+    assert providers["openai"]["available"] is True
+    assert providers["claude"]["available"] is False
+    assert providers["gemini"]["available"] is False
+
+
+def test_providers_marks_default_correctly(client):
+    """Default provider must have is_default=true; others must not."""
+    response = client.get("/v1/providers")
+    providers = {p["name"]: p for p in response.json()["providers"]}
+    # test_settings sets default_llm_provider="openai"
+    assert providers["openai"]["is_default"] is True
+    assert providers["claude"]["is_default"] is False
+    assert providers["gemini"]["is_default"] is False
+
+
+def test_providers_multiple_keys_all_marked_available(test_settings, db_session):
+    """All providers with configured keys must be marked available."""
+    import pytest
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api.deps.auth import get_rate_limiter
+    from app.api.deps.admin_auth import get_admin_login_limiter
+    from app.api.routes.review import router as review_router
+    from app.db import get_db
+    from app.core.config import Settings, get_settings
+
+    multi_settings = Settings(
+        app_env="test",
+        database_url="sqlite://",
+        default_llm_provider="gemini",
+        llm_provider_keys=[
+            {"provider": "openai", "key": "key-a"},
+            {"provider": "claude", "key": "key-b"},
+            {"provider": "gemini", "key": "key-c"},
+        ],
+        admin_username="admin",
+        admin_password="admin1234",
+        admin_jwt_secret="test-super-secret-jwt-key-32chars",
+        admin_jwt_algorithm="HS256",
+        admin_access_token_expire_minutes=30,
+        admin_login_rate_limit_per_minute=5,
+    )
+    get_rate_limiter.cache_clear()
+    get_admin_login_limiter.cache_clear()
+    app = FastAPI()
+    app.include_router(review_router, prefix="/v1", tags=["review"])
+    app.dependency_overrides[get_settings] = lambda: multi_settings
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    with TestClient(app) as c:
+        response = c.get("/v1/providers")
+
+    assert response.status_code == 200
+    providers = {p["name"]: p for p in response.json()["providers"]}
+    assert providers["openai"]["available"] is True
+    assert providers["claude"]["available"] is True
+    assert providers["gemini"]["available"] is True
+    assert providers["gemini"]["is_default"] is True
+    assert providers["openai"]["is_default"] is False
+
+
+def test_review_returns_400_for_unconfigured_provider(client):
+    """Requesting a provider with no API key must return 400 (not 422)."""
+    # test_settings only has openai key; claude and gemini are unconfigured.
+    response = client.post(
+        "/v1/review",
+        headers={"X-API-Key": "test-client-key"},
+        json={"language": "python", "code": "print('ok')", "provider": "gemini"},
+    )
+    assert response.status_code == 400
+    assert "gemini" in response.json()["detail"].lower()
+
+
 def test_review_rate_limit_per_key(client, db_session, monkeypatch):
     """Second request should fail when key-specific limit is 1/min."""
     monkeypatch.setattr("app.api.routes.review.get_llm_service", lambda settings, provider: DummyReviewService())

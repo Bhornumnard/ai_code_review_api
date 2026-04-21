@@ -41,7 +41,7 @@ class GeminiReviewService(BaseLLMReviewService):
         import google.generativeai as genai
 
         genai.configure(api_key=self.api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         prompt = build_review_prompt(
             request.language,
             request.code,

@@ -40,6 +40,46 @@ cp .env.example .env
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## Quick Demo
+
+This demo shows the full flow in 4 steps: check providers -> admin login -> create client API key -> call review API.
+
+0) Check which providers are available (no auth needed):
+
+```bash
+curl -s http://localhost:8000/v1/providers | python3 -m json.tool
+```
+
+1) Login as admin:
+
+```bash
+curl -s -X POST "http://localhost:8000/admin/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"your-password"}'
+```
+
+Copy `access_token` from response.
+
+2) Create a client API key:
+
+```bash
+curl -s -X POST "http://localhost:8000/admin/keys" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"name":"demo-key","rate_limit_per_minute":10}'
+```
+
+Copy `api_key` from response (`api_key` is shown once).
+
+3) Call review endpoint using `X-API-Key`:
+
+```bash
+curl -s -X POST "http://localhost:8000/v1/review" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: <api_key>" \
+  -d '{"language":"python","code":"print(\"hello\")","provider":"openai","review_language":"en"}'
+```
+
 ## Dependency Management (uv)
 
 - Main dependencies are defined in `pyproject.toml`
@@ -63,18 +103,49 @@ Example values are provided in `.env.example`.
 
 ## API Endpoints
 
-- `GET /health` -> service health check
-- `GET /api/docs` -> Swagger UI
-- `GET /api/redoc` -> ReDoc
-- `GET /api/openapi.json` -> OpenAPI schema
-- `POST /v1/review` -> review code
-- `POST /admin/auth/login` -> admin login (returns bearer token)
-- `POST /admin/keys` -> create client API key (admin only)
-- `GET /admin/keys` -> list client API keys (admin only)
-- `PATCH /admin/keys/{id}` -> update expiry, active, rate limit (admin only)
-- `POST /admin/keys/{id}/revoke` -> revoke key (admin only)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/health` | — | Service health check |
+| `GET` | `/v1/providers` | — | List available LLM providers |
+| `POST` | `/v1/review` | `X-API-Key` | Review code with LLM |
+| `GET` | `/api/docs` | — | Swagger UI |
+| `GET` | `/api/redoc` | — | ReDoc |
+| `GET` | `/api/openapi.json` | — | OpenAPI schema |
+| `POST` | `/admin/auth/login` | — | Admin login (returns JWT) |
+| `POST` | `/admin/keys` | Bearer JWT | Create client API key |
+| `GET` | `/admin/keys` | Bearer JWT | List client API keys |
+| `PATCH` | `/admin/keys/{id}` | Bearer JWT | Update key expiry / rate limit |
+| `POST` | `/admin/keys/{id}/revoke` | Bearer JWT | Revoke key |
 
-### Request Example
+### GET /v1/providers
+
+No authentication required. Returns each known provider with its availability status and whether it is the default.
+
+```bash
+curl -s http://localhost:8000/v1/providers
+```
+
+Response:
+
+```json
+{
+  "providers": [
+    { "name": "openai",  "available": true,  "is_default": true  },
+    { "name": "claude",  "available": false, "is_default": false },
+    { "name": "gemini",  "available": false, "is_default": false }
+  ]
+}
+```
+
+### POST /v1/review — Request
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `language` | `"python"` \| `"javascript"` | ✅ | Code language |
+| `code` | `string` | ✅ | Source code to review |
+| `provider` | `"openai"` \| `"claude"` \| `"anthropic"` \| `"gemini"` | — | LLM provider (default: `openai`) |
+| `review_language` | `"en"` \| `"th"` | — | Output language (default: `en`) |
+| `context` | `string` | — | Extra context for the reviewer |
 
 ```json
 {
@@ -86,7 +157,9 @@ Example values are provided in `.env.example`.
 }
 ```
 
-### Response Example
+Returns `400` if the requested `provider` has no API key configured.
+
+### POST /v1/review — Response
 
 ```json
 {

@@ -24,25 +24,6 @@ def normalize_provider(provider: str) -> str:
     return value
 
 
-def validate_api_key(x_api_key: str | None, settings: Settings) -> str:
-    """Validate the incoming API key used to call this service.
-
-    This is the gateway-level auth key (client -> this API), not the
-    downstream provider key (this API -> OpenAI/Claude/Gemini).
-    """
-    if not x_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing X-API-Key header.",
-        )
-    if x_api_key not in settings.api_auth_keys:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key.",
-        )
-    return x_api_key
-
-
 def x_api_key_header(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> str | None:
     """Read the `X-API-Key` header value from the request.
 

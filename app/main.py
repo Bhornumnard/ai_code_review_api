@@ -8,6 +8,7 @@ from app.api.routes.review import router as review_router
 from app.core.config import get_settings
 from app.db import SessionLocal, init_db
 from app.services.auth_service import bootstrap_admin_and_keys
+from app.utils.exceptions import register_exception_handlers
 
 
 @asynccontextmanager
@@ -38,6 +39,8 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
+
+register_exception_handlers(app)
 
 
 @app.get("/health")

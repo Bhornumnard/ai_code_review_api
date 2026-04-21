@@ -20,6 +20,7 @@ from app.core.config import Settings, get_settings
 from app.core.security import hash_api_key, hash_password
 from app.db import get_db
 from app.db_models import AdminUser, ApiKey
+from app.utils.exceptions import register_exception_handlers
 
 
 @pytest.fixture
@@ -91,6 +92,8 @@ def client(db_session: Session, test_settings: Settings) -> Generator[TestClient
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
     )
+
+    register_exception_handlers(app)
 
     @app.get("/health")
     async def health() -> JSONResponse:

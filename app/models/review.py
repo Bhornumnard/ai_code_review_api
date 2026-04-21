@@ -1,6 +1,40 @@
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+class ProviderEnum(str, Enum):
+    """Supported LLM provider names accepted by the API.
+
+    `anthropic` is kept as an accepted alias for `claude` so existing
+    callers do not break if they already use either spelling.
+    """
+    openai = "openai"
+    gemini = "gemini"
+    claude = "claude"
+    anthropic = "anthropic"
+
+
+class ProviderInfo(BaseModel):
+    """Metadata for a single available LLM provider.
+
+    `available` is True when a matching API key is found in settings.
+    `is_default` marks the provider that will be used when none is
+    specified in the review request.
+    """
+    name: str
+    available: bool
+    is_default: bool
+
+
+class ProvidersResponse(BaseModel):
+    """Response shape for `GET /v1/providers`.
+
+    Lists every known provider alongside whether it is currently
+    configured so clients can decide which provider to request.
+    """
+    providers: list[ProviderInfo]
 
 
 class ReviewRequest(BaseModel):
@@ -8,13 +42,14 @@ class ReviewRequest(BaseModel):
 
     - `language`: controls prompt style and validation.
     - `code`: source code to analyze.
-    - `provider`: optional override; default provider is used if omitted.
+    - `provider`: optional override; must be a configured provider.
+      Default provider is used if omitted.
     - `context`: optional extra explanation from caller.
     - `review_language`: output language for review text (`en` or `th`).
     """
     language: Literal["python", "javascript"]
     code: str = Field(min_length=1)
-    provider: Literal["openai", "claude", "anthropic", "gemini"] | None = None
+    provider: ProviderEnum | None = None
     context: str | None = None
     review_language: Literal["en", "th"] = "en"
 
